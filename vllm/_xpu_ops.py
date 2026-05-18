@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING,Optional
 
 import torch
 from vllm_xpu_kernels.flash_attn_interface import flash_attn_varlen_func
@@ -172,7 +172,6 @@ def _xpu_ops_deepseek_scaling_rope_impl(
         positions, query, key, offsets, cos_sin_cache, rotary_dim, is_neox_style
     )
 
-
 def _xpu_ops_deepseek_scaling_rope_fake(
     positions: torch.Tensor,
     query: torch.Tensor,
@@ -184,6 +183,53 @@ def _xpu_ops_deepseek_scaling_rope_fake(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     return query, key
 
+def _xpu_ops_fused_grouped_topk_impl(
+    hidden_states: torch.Tensor,
+    gating_output: torch.Tensor,
+    topk: int,
+    renormalize: bool,
+    num_expert_group: int,
+    topk_group: int,
+    scoring_func: str,
+    routed_scaling_factor: float,
+    e_score_correction_bias: Optional[torch.Tensor] = None,       
+) -> tuple[torch.Tensor, torch.Tensor]:
+    assert hidden_states.size(0) == gating_output.size(0), (
+        "Number of tokens mismatch")
+    if scoring_func == "softmax":
+        scores = torch.softmax(gating_output, dim=-1)
+    elif scoring_func == "sigmoid":
+        scores = gating_output
+    else:   
+        raise ValueError(f"Unsupported scoring function: {scoring_func}")
+    return torch.ops._moe_C.fused_grouped_topk(hidden_states, scores, topk,
+                                  renormalize, num_expert_group, topk_group,
+                                  scoring_func, routed_scaling_factor,
+                                  e_score_correction_bias)
+
+def _xpu_ops_fused_grouped_topk_fake(
+    hidden_states: torch.Tensor,
+    gating_output: torch.Tensor,
+    topk: int,
+    renormalize: bool,
+    num_expert_group: int,
+    topk_group: int,
+    scoring_func: str,
+    routed_scaling_factor: float,
+    e_score_correction_bias: Optional[torch.Tensor] = None,       
+) -> tuple[torch.Tensor, torch.Tensor]:
+    num_tokens = hidden_states.shape[0]
+    topk_weights = torch.empty(
+        (num_tokens, topk),
+        device=hidden_states.device,
+        dtype=torch.float32,
+    )
+    topk_ids = torch.empty(
+        (num_tokens, topk),
+        device=hidden_states.device,
+        dtype=torch.int32,
+    )
+    return topk_weights, topk_ids
 
 def _topk_topp_sample_impl(
     random_sampled: torch.Tensor,
@@ -698,6 +744,13 @@ class xpu_ops:
                 op_func=_xpu_ops_deepseek_scaling_rope_impl,
                 mutates_args=[],
                 fake_impl=_xpu_ops_deepseek_scaling_rope_fake,
+                dispatch_key=current_platform.dispatch_key,
+            )
+            direct_register_custom_op(
+                op_name="xpu_ops_fused_grouped_topk",
+                op_func=_xpu_ops_fused_grouped_topk_impl,
+                mutates_args=[],
+                fake_impl=_xpu_ops_fused_grouped_topk_fake,
                 dispatch_key=current_platform.dispatch_key,
             )
 
