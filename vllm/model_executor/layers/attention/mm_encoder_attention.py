@@ -755,6 +755,25 @@ class MMEncoderAttention(CustomOp):
         sequence_lengths: torch.Tensor
         | None = None,  # Only used for FlashInfer CuDNN backend
     ) -> torch.Tensor:
+
+        # XPU flash-attn (cutlass-sycl Xe2 2D block load) requires the inner
+        # stride of Q/K/V to be 64-byte aligned, which means head_size must be
+        # a multiple of 32 for fp16/bf16 (16 for fp32). Models like Kimi-K2.5
+        # ViT use head_size=72, which violates this; fall back to SDPA.
+        elem_size = query.element_size()
+        align_elems = max(1, 64 // elem_size)
+        if self.head_size % align_elems != 0:
+            logger.warning_once(
+                "MMEncoderAttention on XPU: head_size=%d is not aligned to "
+                "%d elements (%d bytes); falling back to SDPA from %s.",
+                self.head_size,
+                align_elems,
+                64,
+                self.attn_backend,
+                scope="local",
+            )
+            return self._forward_sdpa(query, key, value, cu_seqlens)
+
         if self.attn_backend == AttentionBackendEnum.FLASH_ATTN:
             return self._forward_fa(query, key, value, cu_seqlens, max_seqlen)
         elif self.attn_backend == AttentionBackendEnum.TRITON_ATTN:
