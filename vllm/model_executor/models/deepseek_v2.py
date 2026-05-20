@@ -1570,18 +1570,19 @@ class DeepseekV2ForCausalLM(
                     param_name == "fused_qkv_a_proj"
                 ) and name_mapped not in params_dict:
                     continue
-                else:
-                    name = name_mapped
                 # Skip loading extra bias for GPTQ models.
-                if name.endswith(".bias") and name not in params_dict:
+                if name_mapped.endswith(".bias") and name_mapped not in params_dict:
                     continue
 
-                if is_pp_missing_parameter(name, self):
+                if is_pp_missing_parameter(name_mapped, self):
                     continue
 
-                param = params_dict[name]
+                if name_mapped not in params_dict:
+                    continue
+                param = params_dict[name_mapped]
                 weight_loader = param.weight_loader
                 weight_loader(param, loaded_weight, shard_id)
+                name = name_mapped
                 break
             else:
                 is_expert_weight = False
@@ -1649,6 +1650,8 @@ class DeepseekV2ForCausalLM(
 
                         if is_pp_missing_parameter(name_mapped, self):
                             continue
+                        if name_mapped not in params_dict:
+                            continue
 
                         param = params_dict[name_mapped]
                         # We should ask the weight loader to return success or
@@ -1688,6 +1691,8 @@ class DeepseekV2ForCausalLM(
                             continue
 
                         if is_pp_missing_parameter(name, self):
+                            continue
+                        if name not in params_dict:
                             continue
 
                         param = params_dict[name]
