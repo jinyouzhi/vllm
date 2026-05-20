@@ -353,6 +353,8 @@ class GroupedTopKRouter(BaseRouter):
                 rocm_aiter_grouped_topk,
                 num_fused_shared_experts=self.num_fused_shared_experts,
             )
+        elif current_platform.is_xpu():
+            grouped_topk_impl = torch.ops.vllm.xpu_ops_fused_grouped_topk
         else:
             grouped_topk_impl = grouped_topk
 
