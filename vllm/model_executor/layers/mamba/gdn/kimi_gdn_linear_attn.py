@@ -391,6 +391,20 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
         if attn_metadata_raw is None:
             return
 
+        if current_platform.is_xpu() and hasattr(torch.ops._xpu_C, "kda_attention"):
+            q, k, v = mixed_qkv.split(self.local_projection_size, dim=-1)
+            torch.ops.vllm.kda_attention_core_xpu(
+                core_attn_out,
+                q,
+                k,
+                v,
+                g1,
+                beta,
+                self.prefix,
+            )
+            core_attn_out.copy_(self.o_norm(core_attn_out, g2))
+            return
+
         # Vendor-specific KDA kernels: AMD/ROCm and NVIDIA keep their own copies
         # under kimi_k3/{amd,nvidia}/ops so each can diverge independently.
         if current_platform.is_rocm():
