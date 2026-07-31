@@ -11,15 +11,22 @@ from typing import TYPE_CHECKING
 
 from vllm.platforms import current_platform
 
-# The NVIDIA branch is the static default that type-checkers see; the ROCm
-# branch overrides it at runtime (kept type-compatible via type: ignore).
-if TYPE_CHECKING or not current_platform.is_rocm():
+# The NVIDIA branch is the static default that type-checkers see. The ROCm and
+# XPU branches override it at runtime (kept type-compatible via type: ignore).
+if TYPE_CHECKING:
     from .nvidia.model import KimiK3ForConditionalGeneration, KimiLinearForCausalLM
     from .nvidia.mtp import KimiK3MTP
-else:
+elif current_platform.is_rocm():
     from .amd.linear import KimiLinearForCausalLM  # type: ignore[assignment]
     from .amd.model import KimiK3ForConditionalGeneration  # type: ignore[assignment]
     from .amd.mtp import KimiK3MTP  # type: ignore[assignment]
+elif current_platform.is_xpu():
+    from .xpu.linear import KimiLinearForCausalLM  # type: ignore[assignment]
+    from .xpu.model import KimiK3ForConditionalGeneration  # type: ignore[assignment]
+    from .xpu.mtp import KimiK3MTP  # type: ignore[assignment]
+else:
+    from .nvidia.model import KimiK3ForConditionalGeneration, KimiLinearForCausalLM
+    from .nvidia.mtp import KimiK3MTP
 
 __all__ = [
     "KimiK3ForConditionalGeneration",
