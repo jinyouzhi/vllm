@@ -93,7 +93,9 @@ from vllm.models.common.ops.sequence_parallel import (
 )
 from vllm.models.deepseek_v4.nvidia.model import DeepseekV4MegaMoEExperts
 from vllm.models.deepseek_v4.nvidia.ops.prepare_megamoe import prepare_megamoe_inputs
-from vllm.models.kimi_k3.nvidia.kda import KimiK3DeltaAttention
+from vllm.models.kimi_k3.nvidia.kda import (
+    KimiK3DeltaAttention as _KimiK3DeltaAttentionCUDA,
+)
 from vllm.models.kimi_k3.nvidia.latent_moe_runner import (
     LatentMoERunner,
 )
@@ -120,6 +122,17 @@ from ..common.mm_preprocess import (
 )
 
 logger = init_logger(__name__)
+
+# Only the KDA layer is device-specific, so Intel GPUs swap it here instead of
+# forking this whole model definition the way ROCm does.
+if current_platform.is_xpu():
+    from vllm.models.kimi_k3.xpu.kda import (
+        KimiK3DeltaAttention as _KimiK3DeltaAttentionXPU,
+    )
+
+    KimiK3DeltaAttention = _KimiK3DeltaAttentionXPU
+else:
+    KimiK3DeltaAttention = _KimiK3DeltaAttentionCUDA
 
 # Token-count cutoff for overlapping the MoE router gate with the routed-expert
 # down projection on a separate CUDA stream (latent MoE). At or below this many
