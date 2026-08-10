@@ -367,7 +367,9 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
                 k,
                 v,
                 g1,
-                beta,
+                # The kernel applies the sigmoid itself but reads the logits as
+                # float32, whereas the projection runs in the model dtype.
+                beta.float(),
                 self.prefix,
             )
             core_attn_out = self.o_norm(core_attn_out, g2)
