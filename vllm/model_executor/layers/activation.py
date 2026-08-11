@@ -171,7 +171,7 @@ class SituAndMul(CustomOp):
         super().__init__(compile_native=compile_native)
         self.beta = float(beta)
         self.linear_beta = None if linear_beta is None else float(linear_beta)
-        if current_platform.is_cuda_alike():
+        if current_platform.is_cuda_alike() or current_platform.is_xpu():
             self.op = torch.ops._C.situ_and_mul
 
     def forward_native(self, x: torch.Tensor) -> torch.Tensor:
@@ -194,7 +194,7 @@ class SituAndMul(CustomOp):
         return out
 
     def forward_xpu(self, x: torch.Tensor) -> torch.Tensor:
-        return self.forward_native(x)
+        return self.forward_cuda(x)
 
 
 @CustomOp.register("silu_and_mul_with_clamp")
